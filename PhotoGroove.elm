@@ -1,10 +1,13 @@
 module PhotoGroove exposing (..)
 
 import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes exposing (id, class, classList, src, name, type_, title)
 import Html.Events exposing (onClick)
 import Array exposing (Array)
+import Json.Decode exposing (string, int, list, Decoder)
+import Json.Decode.Pipeline exposing (decode, required, optional)
 import Random
+import Http
 
 
 type alias Photo =
@@ -93,6 +96,19 @@ viewThumbNail selectedUrl thumbnail =
         []
 
 
+viewOrError : Model -> Html Msg
+viewOrError model =
+    case model.loadingError of
+        Nothing ->
+            view model
+
+        Just errorMessage ->
+            div [ class "error-message" ]
+                [ h1 [] [ text "Photo Groove" ]
+                , p [] [ text errorMessage ]
+                ]
+
+
 viewLarge : Maybe String -> Html Msg
 viewLarge maybeUrl =
     case maybeUrl of
@@ -108,6 +124,7 @@ type Msg
     | SelectByIndex Int
     | SurpriseMe
     | SetSize ThumbnailSize
+    | LoadPhotos (Result Http.Error String)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -137,11 +154,35 @@ update msg model =
         SetSize size ->
             ( { model | chosenSize = size }, Cmd.none )
 
+        LoadPhotos (Ok responseStr) ->
+            let
+                urls =
+                    String.split "," responseStr
+
+                photos =
+                    List.map Photo urls
+            in
+                ( { model | photos = photos, selectedUrl = List.head urls }, Cmd.none )
+
+        LoadPhotos (Err _) ->
+            ( { model
+                | loadingError = Just "Error! (Try turning it off and on again?)"
+              }
+            , Cmd.none
+            )
+
+
+initialCmd : Cmd Msg
+initialCmd =
+    "http://elm-in-action.com/photos/list"
+        |> Http.getString
+        |> Http.send LoadPhotos
+
 
 main =
     Html.program
-        { init = ( initialModel, Cmd.none )
-        , view = view
+        { init = ( initialModel, initialCmd )
+        , view = viewOrError
         , update = update
         , subscriptions = (\model -> Sub.none)
         }
